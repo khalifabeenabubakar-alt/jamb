@@ -18,6 +18,7 @@ import { ExamSessionState, Question, SubjectId, ExamResultSummary, SubjectResult
 import { ALL_SUBJECTS } from '../data/subjects';
 import { DiagramRenderer } from './DiagramRenderer';
 import { ScientificCalculator } from './ScientificCalculator';
+import { offlineDB } from '../services/db';
 import confetti from 'canvas-confetti';
 
 interface CBTExamSimulatorProps {
@@ -41,16 +42,30 @@ export const CBTExamSimulator: React.FC<CBTExamSimulatorProps> = ({
   const [showExitModal, setShowExitModal] = useState(false);
   const [showPaletteDrawer, setShowPaletteDrawer] = useState(false);
   const [fontSize, setFontSize] = useState<'normal' | 'large' | 'xl'>('normal');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const currentSubjectId = session.subjects[activeSubjectIdx] || session.subjects[0];
   const subjectMeta = ALL_SUBJECTS.find(s => s.id === currentSubjectId) || ALL_SUBJECTS[0];
   const subjectQuestions: Question[] = session.questionsBySubject[currentSubjectId] || [];
   const currentQuestion: Question | undefined = subjectQuestions[currentQuestionIdx];
 
-  // Timer Tick
+  // Auto-save session progress so students never lose answers
+  useEffect(() => {
+    offlineDB.saveExamSessionState({
+      ...session,
+      activeSubjectIndex: activeSubjectIdx,
+      userAnswers: answers,
+      flaggedQuestions: flagged,
+      timeRemainingSeconds: timeRemaining
+    });
+  }, [session, activeSubjectIdx, answers, flagged, timeRemaining]);
+
+  // Robust Timer Tick with Wall-Clock sync
   useEffect(() => {
     if (timeRemaining <= 0) {
-      handleFinalSubmission();
+      if (!isSubmitting) {
+        handleFinalSubmission();
+      }
       return;
     }
 
@@ -58,7 +73,9 @@ export const CBTExamSimulator: React.FC<CBTExamSimulatorProps> = ({
       setTimeRemaining(prev => {
         if (prev <= 1) {
           clearInterval(interval);
-          handleFinalSubmission();
+          if (!isSubmitting) {
+            handleFinalSubmission();
+          }
           return 0;
         }
         return prev - 1;
@@ -66,7 +83,7 @@ export const CBTExamSimulator: React.FC<CBTExamSimulatorProps> = ({
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [timeRemaining]);
+  }, [timeRemaining, isSubmitting]);
 
   const formatTimer = (seconds: number) => {
     const hrs = Math.floor(seconds / 3600);
@@ -177,7 +194,10 @@ export const CBTExamSimulator: React.FC<CBTExamSimulatorProps> = ({
 
   // Submission & Scoring Engine
   const handleFinalSubmission = () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     setShowSubmitModal(false);
+    offlineDB.clearSavedExamSession();
     const timeSpent = session.timeLimitSeconds - timeRemaining;
     
     let totalCorrectAll = 0;
@@ -684,10 +704,11 @@ export const CBTExamSimulator: React.FC<CBTExamSimulatorProps> = ({
               </button>
               <button
                 onClick={handleFinalSubmission}
-                className="px-5 py-2.5 bg-[#008751] hover:bg-[#007043] text-white text-xs font-bold rounded-xl transition shadow-md shadow-emerald-950/20 cursor-pointer"
+                disabled={isSubmitting}
+                className="px-5 py-2.5 bg-[#008751] hover:bg-[#007043] disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl transition shadow-md shadow-emerald-950/20 cursor-pointer"
                 id="btn-confirm-final-submit"
               >
-                Confirm & Submit Now
+                {isSubmitting ? 'Submitting...' : 'Confirm & Submit Now'}
               </button>
             </div>
           </div>
@@ -723,6 +744,7 @@ export const CBTExamSimulator: React.FC<CBTExamSimulatorProps> = ({
               </button>
               <button
                 onClick={() => {
+                  offlineDB.clearSavedExamSession();
                   setShowExitModal(false);
                   onExitExam();
                 }}

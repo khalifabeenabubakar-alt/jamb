@@ -135,44 +135,57 @@ export const CBTResultView: React.FC<CBTResultViewProps> = ({
             </p>
           </div>
 
-          {/* Quick Metrics (Accuracy, Time, Questions) */}
-          <div className="md:col-span-7 grid grid-cols-3 gap-3">
-            <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 text-center">
-              <div className="text-xs text-slate-400 mb-1 flex items-center justify-center gap-1">
+          {/* Quick Metrics (Accuracy, Percentage, Correct, Incorrect, Unanswered, Time) */}
+          <div className="md:col-span-7 grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 text-center">
+              <div className="text-[11px] text-slate-400 mb-1 flex items-center justify-center gap-1">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Accuracy</span>
+                <span>Score %</span>
               </div>
-              <div className="text-2xl font-bold text-emerald-400 font-mono">
+              <div className="text-xl sm:text-2xl font-bold text-emerald-400 font-mono">
                 {result.totalQuestions > 0 ? Math.round((result.totalCorrect / result.totalQuestions) * 100) : 0}%
               </div>
               <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                {result.totalCorrect}/{result.totalQuestions} Correct
+                {result.totalCorrect} / {result.totalQuestions} Marks
               </div>
             </div>
 
-            <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 text-center">
-              <div className="text-xs text-slate-400 mb-1 flex items-center justify-center gap-1">
-                <Clock className="w-3.5 h-3.5 text-sky-400" />
-                <span>Time Spent</span>
+            <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 text-center">
+              <div className="text-[11px] text-slate-400 mb-1 flex items-center justify-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Correct</span>
               </div>
-              <div className="text-xl sm:text-2xl font-bold text-sky-400 font-mono">
+              <div className="text-xl sm:text-2xl font-bold text-emerald-400 font-mono">
+                {result.totalCorrect}
+              </div>
+              <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                {result.totalAttempted > 0 ? Math.round((result.totalCorrect / result.totalAttempted) * 100) : 0}% Accuracy
+              </div>
+            </div>
+
+            <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 text-center">
+              <div className="text-[11px] text-slate-400 mb-1 flex items-center justify-center gap-1">
+                <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                <span>Incorrect</span>
+              </div>
+              <div className="text-xl sm:text-2xl font-bold text-rose-400 font-mono">
+                {Math.max(0, result.totalAttempted - result.totalCorrect)}
+              </div>
+              <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                {result.totalQuestions - result.totalAttempted} Unanswered
+              </div>
+            </div>
+
+            <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 text-center">
+              <div className="text-[11px] text-slate-400 mb-1 flex items-center justify-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-sky-400" />
+                <span>Time Used</span>
+              </div>
+              <div className="text-lg sm:text-xl font-bold text-sky-400 font-mono">
                 {formatDuration(result.timeSpentSeconds)}
               </div>
               <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                ~{Math.round(result.timeSpentSeconds / (result.totalAttempted || 1))}s / Question
-              </div>
-            </div>
-
-            <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 text-center">
-              <div className="text-xs text-slate-400 mb-1 flex items-center justify-center gap-1">
-                <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
-                <span>Attempted</span>
-              </div>
-              <div className="text-2xl font-bold text-amber-400 font-mono">
-                {result.totalAttempted}
-              </div>
-              <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                {result.totalQuestions - result.totalAttempted} Skipped
+                ~{Math.round(result.timeSpentSeconds / (result.totalAttempted || 1))}s / Q
               </div>
             </div>
           </div>

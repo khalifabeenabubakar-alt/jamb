@@ -48,8 +48,9 @@ class OfflineExamDatabase {
   public init() {
     if (this.isInitialized) return;
 
-    // 1. Load curated questions bank
-    const bundled: Question[] = [...INITIAL_QUESTIONS, ...EXTRA_QUESTIONS];
+    // 1. Load curated questions bank + custom imported questions
+    const customStored = this.getCustomQuestions();
+    const bundled: Question[] = [...customStored, ...INITIAL_QUESTIONS, ...EXTRA_QUESTIONS];
 
     // 2. Load extended syllabus questions
     Object.entries(EXTENDED_SYLLABUS_QUESTIONS).forEach(([subjKey, list]) => {
@@ -84,6 +85,123 @@ class OfflineExamDatabase {
     
     this.checkAndUpdateDailyStreak();
     this.isInitialized = true;
+  }
+
+  // --- Custom Questions Management (Admin Dashboard) ---
+
+  public getCustomQuestions(): Question[] {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.CUSTOM_QUESTIONS);
+      return stored ? JSON.parse(stored) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  public addQuestion(question: Question): void {
+    const custom = this.getCustomQuestions();
+    const updated = [question, ...custom];
+    try {
+      localStorage.setItem(STORAGE_KEYS.CUSTOM_QUESTIONS, JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Failed to save question', e);
+    }
+    // Update active memory bank
+    this.questions.unshift(question);
+  }
+
+  public updateQuestion(updatedQuestion: Question): void {
+    const custom = this.getCustomQuestions();
+    const idx = custom.findIndex(q => q.id === updatedQuestion.id);
+    if (idx >= 0) {
+      custom[idx] = updatedQuestion;
+      try {
+        localStorage.setItem(STORAGE_KEYS.CUSTOM_QUESTIONS, JSON.stringify(custom));
+      } catch (e) {
+        console.warn('Failed to update question in storage', e);
+      }
+    }
+    // Update in-memory
+    const memoryIdx = this.questions.findIndex(q => q.id === updatedQuestion.id);
+    if (memoryIdx >= 0) {
+      this.questions[memoryIdx] = updatedQuestion;
+    }
+  }
+
+  public deleteQuestion(questionId: string): void {
+    const custom = this.getCustomQuestions();
+    const filtered = custom.filter(q => q.id !== questionId);
+    try {
+      localStorage.setItem(STORAGE_KEYS.CUSTOM_QUESTIONS, JSON.stringify(filtered));
+    } catch (e) {
+      console.warn('Failed to delete question from storage', e);
+    }
+    this.questions = this.questions.filter(q => q.id !== questionId);
+  }
+
+  public bulkImportQuestions(newQuestions: Question[]): { imported: number; errors: string[] } {
+    const errors: string[] = [];
+    const validQuestions: Question[] = [];
+
+    newQuestions.forEach((q, idx) => {
+      if (!q.question || typeof q.question !== 'string' || q.question.trim().length === 0) {
+        errors.push(`Row ${idx + 1}: Missing question text`);
+        return;
+      }
+      if (!q.options || !Array.isArray(q.options) || q.options.length < 2) {
+        errors.push(`Row ${idx + 1}: Question must have at least 2 options (A, B)`);
+        return;
+      }
+      if (!q.correctOption || !['A', 'B', 'C', 'D', 'E'].includes(q.correctOption)) {
+        errors.push(`Row ${idx + 1}: Invalid correctOption (must be A, B, C, D, or E)`);
+        return;
+      }
+
+      validQuestions.push({
+        ...q,
+        id: q.id || `custom-q-${Date.now()}-${idx}`
+      });
+    });
+
+    if (validQuestions.length > 0) {
+      const custom = this.getCustomQuestions();
+      const updated = [...validQuestions, ...custom];
+      try {
+        localStorage.setItem(STORAGE_KEYS.CUSTOM_QUESTIONS, JSON.stringify(updated));
+      } catch (e) {
+        console.warn('Bulk import storage error', e);
+      }
+      this.questions.unshift(...validQuestions);
+    }
+
+    return { imported: validQuestions.length, errors };
+  }
+
+  // --- Active Exam Interruption Recovery ---
+
+  public getSavedExamSession(): any | null {
+    try {
+      const stored = localStorage.getItem('examsng_active_exam_session_v1');
+      return stored ? JSON.parse(stored) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  public saveExamSessionState(session: any): void {
+    try {
+      localStorage.setItem('examsng_active_exam_session_v1', JSON.stringify(session));
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  public clearSavedExamSession(): void {
+    try {
+      localStorage.removeItem('examsng_active_exam_session_v1');
+    } catch (e) {
+      // ignore
+    }
   }
 
   private synthesizeFullSubjectBanks(base: Question[]): Question[] {

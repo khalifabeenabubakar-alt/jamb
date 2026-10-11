@@ -46,8 +46,9 @@ import { SubjectDrillSelector } from './components/SubjectDrillSelector';
 import { CombinationModal } from './components/CombinationModal';
 import { ScientificCalculator } from './components/ScientificCalculator';
 import { DiagramRenderer } from './components/DiagramRenderer';
+import { AdminQuestionManager } from './components/AdminQuestionManager';
 
-type ViewType = 'home' | 'cbt_exam' | 'cbt_result' | 'subject_drill' | 'theory_grading' | 'literature' | 'analytics' | 'bookmarks';
+type ViewType = 'home' | 'cbt_exam' | 'cbt_result' | 'subject_drill' | 'theory_grading' | 'literature' | 'analytics' | 'bookmarks' | 'admin_questions' | 'exam_instructions';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<ViewType>('home');
@@ -57,17 +58,23 @@ export default function App() {
   const [showComboModal, setShowComboModal] = useState(false);
   const [showGlobalCalculator, setShowGlobalCalculator] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [savedInterruptedSession, setSavedInterruptedSession] = useState<ExamSessionState | null>(null);
+  const [pendingSessionForInstructions, setPendingSessionForInstructions] = useState<ExamSessionState | null>(null);
 
   // Preselected drill state
   const [drillSubject, setDrillSubject] = useState<SubjectId | undefined>(undefined);
   const [drillTopic, setDrillTopic] = useState<string | undefined>(undefined);
 
-  // Refresh profile on mount
+  // Refresh profile and check for interrupted exam session on mount
   useEffect(() => {
     setStudentProfile(offlineDB.getStudentProfile());
+    const saved = offlineDB.getSavedExamSession();
+    if (saved && saved.questionsBySubject && Object.keys(saved.questionsBySubject).length > 0) {
+      setSavedInterruptedSession(saved);
+    }
   }, []);
 
-  // Launch Full 4-Subject UTME Mock Exam (180 questions, 120 mins, 400 marks)
+  // Launch Full 4-Subject UTME Mock Exam with Pre-Test Instructions
   const handleLaunchFullUtmeMock = () => {
     const subjects = studentProfile.combination;
     const questionsBySubject: Record<SubjectId, Question[]> = {} as any;
@@ -94,9 +101,32 @@ export default function App() {
       isCompleted: false
     };
 
-    setActiveSession(session);
-    setCurrentView('cbt_exam');
+    setPendingSessionForInstructions(session);
+    setCurrentView('exam_instructions');
     setMobileSidebarOpen(false);
+  };
+
+  // Start exam after confirming instructions
+  const handleConfirmStartExam = () => {
+    if (pendingSessionForInstructions) {
+      setActiveSession(pendingSessionForInstructions);
+      setPendingSessionForInstructions(null);
+      setCurrentView('cbt_exam');
+    }
+  };
+
+  // Resume interrupted exam session
+  const handleResumeSavedSession = () => {
+    if (savedInterruptedSession) {
+      setActiveSession(savedInterruptedSession);
+      setCurrentView('cbt_exam');
+      setSavedInterruptedSession(null);
+    }
+  };
+
+  const handleDiscardSavedSession = () => {
+    offlineDB.clearSavedExamSession();
+    setSavedInterruptedSession(null);
   };
 
   // Start Targeted Drill on Weak Topic
@@ -273,6 +303,19 @@ export default function App() {
               </span>
             )}
           </button>
+
+          <button
+            onClick={() => { setCurrentView('admin_questions'); setMobileSidebarOpen(false); }}
+            className={`w-full text-left px-3.5 py-3 rounded-lg text-sm font-medium transition flex items-center gap-3 ${
+              currentView === 'admin_questions'
+                ? 'bg-[#008751]/25 border-l-4 border-[#008751] text-white font-semibold shadow-inner'
+                : 'text-white/70 hover:bg-white/5 hover:text-white'
+            }`}
+            id="nav-admin-questions"
+          >
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <span>Admin Portal</span>
+          </button>
         </nav>
 
         {/* Candidate Profile at Bottom */}
@@ -341,6 +384,8 @@ export default function App() {
                 {currentView === 'analytics' && 'Performance & Weak Topic Diagnostics'}
                 {currentView === 'bookmarks' && 'Bookmarked Revision Bank'}
                 {currentView === 'cbt_result' && 'Exam Performance Review'}
+                {currentView === 'admin_questions' && 'Question Management System'}
+                {currentView === 'exam_instructions' && 'Pre-Examination Instructions'}
               </h1>
             </div>
 
@@ -504,9 +549,147 @@ export default function App() {
             </div>
           )}
 
+          {/* VIEW: ADMIN QUESTION MANAGEMENT */}
+          {currentView === 'admin_questions' && (
+            <AdminQuestionManager onBack={() => setCurrentView('home')} />
+          )}
+
+          {/* VIEW: EXAM INSTRUCTIONS BEFORE TEST STARTS */}
+          {currentView === 'exam_instructions' && pendingSessionForInstructions && (
+            <div className="max-w-3xl mx-auto bg-white border border-slate-200 rounded-3xl p-6 sm:p-10 shadow-xl space-y-6" id="exam-instructions-view">
+              <div className="border-b border-slate-100 pb-5 flex items-center justify-between">
+                <div>
+                  <span className="px-3 py-1 bg-emerald-50 text-[#008751] font-mono text-xs font-bold rounded-full border border-emerald-200">
+                    EXAMINATION BRIEFING & RULES
+                  </span>
+                  <h2 className="text-xl sm:text-2xl font-black text-slate-900 mt-2">
+                    {pendingSessionForInstructions.title}
+                  </h2>
+                </div>
+                <button
+                  onClick={() => {
+                    setPendingSessionForInstructions(null);
+                    setCurrentView('home');
+                  }}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1 border border-slate-200"
+                >
+                  <ChevronLeft className="w-4 h-4 text-[#008751]" />
+                  <span>Cancel</span>
+                </button>
+              </div>
+
+              {/* Exam Specs Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-center">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">EXAM BODY</div>
+                  <div className="text-base font-bold text-slate-900">{pendingSessionForInstructions.examType}</div>
+                </div>
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-center">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">QUESTIONS</div>
+                  <div className="text-base font-bold text-[#008751]">180 Questions</div>
+                </div>
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-center">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">DURATION</div>
+                  <div className="text-base font-bold text-slate-900">120 Minutes</div>
+                </div>
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-center">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">MAX SCORE</div>
+                  <div className="text-base font-bold text-slate-900">400 Marks</div>
+                </div>
+              </div>
+
+              {/* Subjects in this paper */}
+              <div className="p-4 bg-emerald-50/60 rounded-2xl border border-emerald-100">
+                <div className="text-xs font-bold text-[#008751] uppercase tracking-wider mb-2">
+                  Paper Subjects Breakdown:
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-700">
+                  {pendingSessionForInstructions.subjects.map((sId, idx) => {
+                    const sMeta = ALL_SUBJECTS.find(s => s.id === sId);
+                    const qCount = sId === 'english' ? 60 : 40;
+                    return (
+                      <div key={sId} className="flex justify-between p-2 bg-white rounded-lg border border-emerald-100">
+                        <span className="font-semibold">{idx + 1}. {sMeta?.name}</span>
+                        <span className="font-mono font-bold text-emerald-800">{qCount} Questions</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Instructions list */}
+              <div className="space-y-3 text-xs sm:text-sm text-slate-600 leading-relaxed">
+                <h3 className="font-bold text-slate-900 uppercase tracking-wider text-xs">
+                  Important Testing Regulations:
+                </h3>
+                <ul className="space-y-2 list-disc list-inside">
+                  <li><strong>Automatic Saving:</strong> Every answer selected is saved instantly in your browser storage. If your device sleeps or the tab reloads, your progress is kept.</li>
+                  <li><strong>8-Key Navigation:</strong> You can use standard CBT keyboard shortcuts: press keys <code className="bg-slate-100 px-1 py-0.5 rounded font-mono font-bold">A, B, C, D</code> to select options, <code className="bg-slate-100 px-1 py-0.5 rounded font-mono font-bold">N</code> for next, <code className="bg-slate-100 px-1 py-0.5 rounded font-mono font-bold">P</code> for previous, and <code className="bg-slate-100 px-1 py-0.5 rounded font-mono font-bold">R</code> to flag.</li>
+                  <li><strong>Scientific Calculator:</strong> An approved on-screen scientific calculator is available at the top right of the testing screen.</li>
+                  <li><strong>Auto-Submission:</strong> When the countdown timer reaches 00:00:00, the examination will submit automatically. You can also review and submit manually at any time.</li>
+                  <li><strong>100% Free:</strong> Full comprehensive results, step-by-step worked solutions, and Nigerian university cut-off benchmarks will be displayed immediately upon completion.</li>
+                </ul>
+              </div>
+
+              {/* Start Confirmation CTA */}
+              <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <span className="text-xs text-slate-500 font-medium">
+                  Ensure you are seated and ready before starting the clock.
+                </span>
+                <button
+                  onClick={handleConfirmStartExam}
+                  className="w-full sm:w-auto px-8 py-3 bg-[#008751] hover:bg-[#007043] text-white font-bold text-sm rounded-xl transition shadow-lg shadow-emerald-950/20 flex items-center justify-center gap-2 cursor-pointer"
+                  id="btn-confirm-start-exam"
+                >
+                  <Play className="w-4 h-4 fill-white" />
+                  <span>I AM READY — START EXAMINATION</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* VIEW: HOME DASHBOARD (Geometric Balance Architecture) */}
           {currentView === 'home' && (
             <div className="space-y-6" id="geometric-dashboard">
+              {/* Interrupted Exam Session Recovery Banner */}
+              {savedInterruptedSession && (
+                <div className="p-4 sm:p-5 bg-amber-50 border border-amber-300 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm animate-in fade-in">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center flex-shrink-0 shadow-sm">
+                      <Clock className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-amber-900 uppercase tracking-wider">
+                        Unfinished Examination Found
+                      </div>
+                      <div className="text-sm font-bold text-slate-800">
+                        {savedInterruptedSession.title} ({Math.round(savedInterruptedSession.timeRemainingSeconds / 60)} mins remaining)
+                      </div>
+                      <div className="text-xs text-slate-600 mt-0.5">
+                        Your previous testing answers are safely saved. You can resume right where you stopped.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-end sm:self-center">
+                    <button
+                      onClick={handleDiscardSavedSession}
+                      className="px-3 py-2 text-xs font-bold text-slate-600 hover:text-rose-600 hover:bg-white/80 rounded-xl transition cursor-pointer"
+                    >
+                      Discard
+                    </button>
+                    <button
+                      onClick={handleResumeSavedSession}
+                      className="px-5 py-2 bg-[#008751] hover:bg-[#007043] text-white font-bold text-xs rounded-xl transition shadow-md shadow-emerald-950/20 cursor-pointer flex items-center gap-1.5"
+                      id="btn-resume-exam"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-white" />
+                      <span>Resume Examination</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* ROW 1: Combination & Metrics Card + Dark Exam Readiness Card */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                 {/* 8-col Card: Current Test Combination & Metrics */}
@@ -774,6 +957,99 @@ export default function App() {
                   </div>
                 </div>
               )}
+
+              {/* ROW 4: 4 Quick Navigation Hub Cards (Start Practice, Mock Exam, Subjects, Results) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div 
+                  onClick={handleLaunchFullUtmeMock}
+                  className="p-5 bg-gradient-to-br from-[#008751] to-[#005c36] text-white rounded-2xl shadow-sm hover:shadow-md transition cursor-pointer flex flex-col justify-between group"
+                  id="card-launch-mock"
+                >
+                  <div>
+                    <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center mb-3">
+                      <Play className="w-5 h-5 fill-white text-white" />
+                    </div>
+                    <div className="text-sm font-bold">Mock Examination</div>
+                    <p className="text-xs text-white/80 mt-1 leading-relaxed">
+                      180 questions, 120-minute unified 4-subject JAMB UTME simulation with 8-key shortcuts.
+                    </p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-white/20 text-xs font-bold flex items-center justify-between">
+                    <span>Launch 4-Subject Mock</span>
+                    <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition" />
+                  </div>
+                </div>
+
+                <div 
+                  onClick={() => setCurrentView('subject_drill')}
+                  className="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm hover:border-[#008751] transition cursor-pointer flex flex-col justify-between group"
+                  id="card-start-practice"
+                >
+                  <div>
+                    <div className="w-10 h-10 rounded-xl bg-emerald-50 text-[#008751] flex items-center justify-center mb-3 border border-emerald-200">
+                      <Zap className="w-5 h-5" />
+                    </div>
+                    <div className="text-sm font-bold text-slate-900">Start Practice</div>
+                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                      Custom practice drills filtered by examination body, specific subject, topic, and past year.
+                    </p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-slate-100 text-xs font-bold text-[#008751] flex items-center justify-between">
+                    <span>Customize Drill</span>
+                    <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition" />
+                  </div>
+                </div>
+
+                <div 
+                  onClick={() => setCurrentView('theory_grading')}
+                  className="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm hover:border-indigo-500 transition cursor-pointer flex flex-col justify-between group"
+                  id="card-theory-lab"
+                >
+                  <div>
+                    <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center mb-3 border border-indigo-200">
+                      <FileText className="w-5 h-5" />
+                    </div>
+                    <div className="text-sm font-bold text-slate-900">WAEC Theory Lab</div>
+                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                      Authentic marking schemes with Method (M), Accuracy (A), and Bonus (B) rubrics.
+                    </p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-slate-100 text-xs font-bold text-indigo-700 flex items-center justify-between">
+                    <span>Open Theory Studio</span>
+                    <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition" />
+                  </div>
+                </div>
+
+                <div 
+                  onClick={() => setCurrentView('analytics')}
+                  className="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm hover:border-sky-500 transition cursor-pointer flex flex-col justify-between group"
+                  id="card-analytics-results"
+                >
+                  <div>
+                    <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-700 flex items-center justify-center mb-3 border border-sky-200">
+                      <BarChart2 className="w-5 h-5" />
+                    </div>
+                    <div className="text-sm font-bold text-slate-900">Results & Analytics</div>
+                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                      Exam history, accuracy tracking, score progression, and admission benchmarks.
+                    </p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-slate-100 text-xs font-bold text-sky-700 flex items-center justify-between">
+                    <span>Review Analytics</span>
+                    <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition" />
+                  </div>
+                </div>
+              </div>
+
+              {/* 100% Free Forever Notice */}
+              <div className="p-4 bg-emerald-50/70 border border-emerald-200/80 rounded-2xl flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-[#008751] text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
+                  FREE
+                </div>
+                <div className="text-xs text-slate-700">
+                  <strong className="text-[#008751]">100% Free For All Nigerian Students:</strong> No subscriptions, activation codes, or paywalls required. Access complete past questions, explanations, full mock exams, theory marking schemes, and novels at zero cost.
+                </div>
+              </div>
             </div>
           )}
         </main>

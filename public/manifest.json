@@ -1,0 +1,17 @@
+{
+  "name": "ExamsNG: Offline UTME, WAEC & NECO Exam Engine",
+  "short_name": "ExamsNG",
+  "description": "100% Free offline-first exam preparation engine for JAMB UTME, WAEC, and NECO CBT with 4-subject simulator, scientific calculator, theory marking schemes, and literature guides.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#002D1B",
+  "theme_color": "#008751",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}
